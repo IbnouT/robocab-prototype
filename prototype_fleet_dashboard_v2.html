@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robo-Cab Ottawa — Fleet Operations Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; background: #f8f9fa; color: #1a1a1a; }
+
+  .dashboard { display: grid; grid-template-columns: 1fr 380px; grid-template-rows: 56px 1fr; height: 100vh; }
+
+  .header {
+    grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; background: #fff; border-bottom: 1px solid #e0e2e6;
+  }
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .logo { font-size: 16px; font-weight: 700; color: #1a1a1a; display: flex; align-items: center; gap: 10px; }
+  .logo-icon { width: 32px; height: 32px; border-radius: 10px; background: #1a73e8; display: flex; align-items: center; justify-content: center; font-size: 16px; color: #fff; }
+  .header-status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #666; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #34a853; animation: pulse-dot 2s ease-in-out infinite; }
+  @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  .header-right { display: flex; align-items: center; gap: 20px; }
+  .header-time { font-size: 14px; font-weight: 600; color: #1a1a1a; }
+  .header-user { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #555; }
+  .user-avatar { width: 28px; height: 28px; border-radius: 50%; background: #e8f0fe; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #1a73e8; }
+
+  .map-area { position: relative; overflow: hidden; }
+  #map { width: 100%; height: 100%; }
+
+  .layer-toggles {
+    position: absolute; top: 12px; left: 56px; z-index: 1000;
+    display: flex; gap: 6px;
+  }
+  .layer-btn {
+    padding: 8px 14px; border-radius: 20px; border: 1px solid #dadce0;
+    background: #fff; font-size: 12px; font-weight: 500; color: #555;
+    cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+  .layer-btn:hover { background: #f1f3f4; }
+  .layer-btn.active { border-color: #1a73e8; color: #1a73e8; background: #e8f0fe; }
+  .layer-btn .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  .side-panel {
+    background: #fff; border-left: 1px solid #e0e2e6; display: flex; flex-direction: column;
+    overflow-y: auto;
+  }
+  .panel-section { padding: 18px 20px; border-bottom: 1px solid #eeeff1; }
+  .panel-title { font-size: 11px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 14px; }
+
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .metric-card { background: #f8f9fa; border-radius: 12px; padding: 14px; border: 1px solid #eeeff1; }
+  .metric-value { font-size: 24px; font-weight: 700; color: #1a1a1a; }
+  .metric-label { font-size: 11px; color: #888; margin-top: 2px; }
+  .metric-change { font-size: 11px; font-weight: 500; margin-top: 4px; }
+  .metric-change.good { color: #34a853; }
+  .metric-change.warn { color: #f59e0b; }
+
+  .corridor-list { display: flex; flex-direction: column; gap: 6px; }
+  .corridor-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; background: #f8f9fa; border-radius: 10px;
+    cursor: pointer; transition: all 0.2s; border: 1px solid transparent;
+  }
+  .corridor-item:hover { background: #e8f0fe; border-color: #c5d8f8; }
+  .corridor-item.selected { background: #e8f0fe; border-color: #1a73e8; }
+  .corridor-bar-wrap { width: 44px; height: 5px; background: #e0e2e6; border-radius: 3px; overflow: hidden; flex-shrink: 0; }
+  .corridor-bar { height: 100%; border-radius: 3px; }
+  .corridor-info { flex: 1; min-width: 0; }
+  .corridor-name { font-size: 13px; font-weight: 600; color: #1a1a1a; }
+  .corridor-detail { font-size: 10px; color: #888; margin-top: 1px; }
+  .corridor-pct { font-size: 13px; font-weight: 700; min-width: 36px; text-align: right; }
+
+  .alert-list { display: flex; flex-direction: column; gap: 8px; }
+  .alert-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 10px; }
+  .alert-item.warn { background: #fef3c7; border: 1px solid #fde68a; }
+  .alert-item.info { background: #e8f0fe; border: 1px solid #c5d8f8; }
+  .alert-item.ok { background: #dcfce7; border: 1px solid #bbf7d0; }
+  .alert-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .alert-text { font-size: 12px; color: #333; line-height: 1.4; }
+  .alert-time { font-size: 10px; color: #888; margin-top: 2px; }
+
+  .action-row { display: flex; gap: 8px; margin-top: 14px; }
+  .panel-btn {
+    flex: 1; padding: 10px; border-radius: 10px; border: 1px solid #dadce0;
+    background: #fff; color: #333; font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; text-align: center;
+  }
+  .panel-btn:hover { background: #f1f3f4; border-color: #bbb; }
+  .panel-btn.primary { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+  .panel-btn.primary:hover { background: #1558b0; }
+  .panel-btn.danger { border-color: #f59e0b; color: #d97706; }
+  .panel-btn.danger:hover { background: #fffbeb; }
+
+  .equity-score-bar { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .score-track { flex: 1; height: 8px; background: #e0e2e6; border-radius: 4px; overflow: hidden; position: relative; }
+  .score-gradient { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(to right, #ea4335, #f59e0b, #34a853); border-radius: 4px; }
+  .score-marker { position: absolute; top: -4px; width: 3px; height: 16px; background: #1a1a1a; border-radius: 2px; transform: translateX(-50%); }
+  .score-labels { display: flex; justify-content: space-between; font-size: 9px; color: #888; margin-top: 3px; }
+
+  .leaflet-popup-content-wrapper { border-radius: 12px !important; padding: 4px !important; box-shadow: 0 4px 20px rgba(0,0,0,0.12) !important; }
+  .leaflet-popup-tip { box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important; }
+  .leaflet-control-attribution { display: none; }
+  .corridor-popup { min-width: 240px; }
+  .corridor-popup h3 { font-size: 14px; font-weight: 700; margin-bottom: 8px; color: #1a1a1a; }
+  .popup-stat { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; border-bottom: 1px solid #eeeff1; }
+  .popup-stat:last-child { border-bottom: none; }
+  .popup-stat-label { color: #666; }
+  .popup-stat-value { font-weight: 600; }
+  .popup-bar { width: 100%; height: 8px; background: #e0e2e6; border-radius: 4px; margin: 8px 0; overflow: hidden; }
+  .popup-bar-fill { height: 100%; border-radius: 4px; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px);
+    background: #1a1a1a; color: #fff; padding: 14px 24px; border-radius: 12px;
+    font-size: 13px; font-weight: 500; z-index: 10000;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.2); transition: transform 0.3s ease;
+    display: flex; align-items: center; gap: 10px; max-width: 500px;
+  }
+  .toast.visible { transform: translateX(-50%) translateY(0); }
+  .toast-icon { font-size: 18px; }
+
+  .confirm-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9000;
+    background: rgba(0,0,0,0.3); backdrop-filter: blur(4px);
+    display: none; justify-content: center; align-items: center;
+  }
+  .confirm-overlay.visible { display: flex; }
+  .confirm-dialog { background: #fff; border-radius: 16px; padding: 28px; width: 420px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+  .confirm-title { font-size: 18px; font-weight: 700; color: #1a1a1a; margin-bottom: 8px; }
+  .confirm-body { font-size: 13px; color: #555; line-height: 1.5; margin-bottom: 20px; }
+  .confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }
+  .confirm-btn { padding: 10px 20px; border-radius: 10px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .confirm-cancel { background: #f1f3f4; color: #333; }
+  .confirm-cancel:hover { background: #e0e2e4; }
+  .confirm-ok { background: #1a73e8; color: #fff; }
+  .confirm-ok:hover { background: #1558b0; }
+  .confirm-ok.warn { background: #f59e0b; }
+  .confirm-ok.warn:hover { background: #d97706; }
+
+  .map-loading {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 1000; background: #fff; border-radius: 12px; padding: 16px 24px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 10px;
+    font-size: 13px; color: #666;
+  }
+  .map-loading.hidden { display: none; }
+  .mini-spinner { width: 18px; height: 18px; border: 2px solid #e0e2e6; border-top-color: #1a73e8; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="dashboard">
+  <div class="header">
+    <div class="header-left">
+      <div class="logo"><div class="logo-icon">🚖</div> Robo-Cab Fleet Ops</div>
+      <div class="header-status"><div class="status-dot"></div> Live · Ottawa Central</div>
+    </div>
+    <div class="header-right">
+      <div class="header-time">Tue 8:22 AM · Peak Hours Active</div>
+      <div class="header-user"><div class="user-avatar">LM</div> Lisa M. · Fleet Operations</div>
+    </div>
+  </div>
+
+  <div class="map-area">
+    <div class="layer-toggles">
+      <button class="layer-btn active" id="btnDensity" onclick="toggleLayer('density')"><span class="dot" style="background:#f59e0b"></span> Fleet density</button>
+      <button class="layer-btn active" id="btnNei" onclick="toggleLayer('nei')"><span class="dot" style="background:#ea4335"></span> NEI zones</button>
+      <button class="layer-btn active" id="btnSchool" onclick="toggleLayer('school')"><span class="dot" style="background:#fbbc04"></span> School zones</button>
+      <button class="layer-btn" id="btnVehicles" onclick="toggleLayer('vehicles')"><span class="dot" style="background:#9334e6"></span> Vehicles</button>
+    </div>
+    <div class="map-loading" id="mapLoading"><div class="mini-spinner"></div> Loading corridors...</div>
+    <div id="map"></div>
+  </div>
+
+  <div class="side-panel">
+    <div class="panel-section">
+      <div class="panel-title">Fleet Overview — Peak AM</div>
+      <div class="metrics-grid">
+        <div class="metric-card"><div class="metric-value">147</div><div class="metric-label">Active vehicles</div><div class="metric-change good">▲ 12% from last Tue</div></div>
+        <div class="metric-card"><div class="metric-value">94%</div><div class="metric-label">ETA accuracy</div><div class="metric-change good">Within 3-min cap</div></div>
+        <div class="metric-card"><div class="metric-value" id="exceedanceCount">2</div><div class="metric-label">Exceedances</div><div class="metric-change warn" id="exceedanceChange">▲ 1 from yesterday</div></div>
+        <div class="metric-card"><div class="metric-value">0</div><div class="metric-label">School-zone violations</div><div class="metric-change good">Clean record</div></div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">Corridor Density vs. Cap</div>
+      <div class="corridor-list" id="corridorList">
+        <div class="corridor-item" onclick="selectCorridor('mcarthur')" id="corr-mcarthur">
+          <div class="corridor-bar-wrap"><div class="corridor-bar" style="width:87%;background:#f59e0b;"></div></div>
+          <div class="corridor-info"><div class="corridor-name">McArthur Ave</div><div class="corridor-detail">NEI 52.9 · School zone active · Loop tightening</div></div>
+          <div class="corridor-pct" style="color:#f59e0b;">87%</div>
+        </div>
+        <div class="corridor-item" onclick="selectCorridor('montreal')" id="corr-montreal">
+          <div class="corridor-bar-wrap"><div class="corridor-bar" style="width:54%;background:#1a73e8;"></div></div>
+          <div class="corridor-info"><div class="corridor-name">Montreal Rd</div><div class="corridor-detail">NEI 55.1 · No active constraints</div></div>
+          <div class="corridor-pct" style="color:#1a73e8;">54%</div>
+        </div>
+        <div class="corridor-item" onclick="selectCorridor('ogilvie')" id="corr-ogilvie">
+          <div class="corridor-bar-wrap"><div class="corridor-bar" style="width:41%;background:#1a73e8;"></div></div>
+          <div class="corridor-info"><div class="corridor-name">Ogilvie Rd</div><div class="corridor-detail">NEI 61.3 · Above threshold</div></div>
+          <div class="corridor-pct" style="color:#1a73e8;">41%</div>
+        </div>
+        <div class="corridor-item" onclick="selectCorridor('stlaurent')" id="corr-stlaurent">
+          <div class="corridor-bar-wrap"><div class="corridor-bar" style="width:28%;background:#34a853;"></div></div>
+          <div class="corridor-info"><div class="corridor-name">St Laurent Blvd</div><div class="corridor-detail">NEI 58.7 · NEI multiplier active</div></div>
+          <div class="corridor-pct" style="color:#34a853;">28%</div>
+        </div>
+        <div class="corridor-item" onclick="selectCorridor('walkley')" id="corr-walkley">
+          <div class="corridor-bar-wrap"><div class="corridor-bar" style="width:18%;background:#34a853;"></div></div>
+          <div class="corridor-info"><div class="corridor-name">Walkley Rd</div><div class="corridor-detail">NEI 48.2 · NEI multiplier active</div></div>
+          <div class="corridor-pct" style="color:#34a853;">18%</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">Alerts</div>
+      <div class="alert-list" id="alertList">
+        <div class="alert-item warn"><div class="alert-icon">⚠️</div><div><div class="alert-text"><strong>McArthur Ave at 87% cap.</strong> Loop tightened multiplier to 1.8×. 3 vehicles rerouted in last 15 min.</div><div class="alert-time">2 min ago</div></div></div>
+        <div class="alert-item info"><div class="alert-icon">🏫</div><div><div class="alert-text"><strong>School-zone active.</strong> Horizon-Jeunesse exclusion zone (7:30–8:45 AM). Through-traffic blocked; local-access exempt. 0 violations.</div><div class="alert-time">52 min ago</div></div></div>
+        <div class="alert-item ok"><div class="alert-icon">✅</div><div><div class="alert-text"><strong>ETA cap holding.</strong> Avg added time: 1.8 min (under 3-min cap).</div><div class="alert-time">Ongoing</div></div></div>
+      </div>
+      <div class="action-row">
+        <button class="panel-btn danger" onclick="showReduceDispatch()">⬇ Reduce dispatch</button>
+        <button class="panel-btn primary" onclick="showFlagForCity()">📋 Flag for City review</button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">Fleet Equity Score — Today</div>
+      <div class="equity-score-bar">
+        <div class="score-track"><div class="score-gradient"></div><div class="score-marker" id="scoreMarker" style="left:76%;"></div></div>
+        <span style="font-size:20px;font-weight:700;color:#34a853;" id="scoreValue">76</span>
+      </div>
+      <div class="score-labels"><span>0 (inequitable)</span><span>100 (equitable)</span></div>
+      <p style="font-size:11px;color:#888;margin-top:6px;line-height:1.4;">Composite of routing distribution across NEI zones, school-zone compliance, and constraint exceedance rate.</p>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><div class="toast-icon" id="toastIcon">✅</div><div id="toastText"></div></div>
+
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-dialog">
+    <div class="confirm-title" id="confirmTitle"></div>
+    <div class="confirm-body" id="confirmBody"></div>
+    <div class="confirm-actions">
+      <button class="confirm-btn confirm-cancel" onclick="closeConfirm()">Cancel</button>
+      <button class="confirm-btn confirm-ok" id="confirmOk" onclick="executeConfirm()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Map ──
+const map = L.map('map', {
+  center: [45.4200, -75.6350],
+  zoom: 13,
+  attributionControl: false
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+  maxZoom: 18
+}).addTo(map);
+
+// ── Corridor definitions — start/end points for OSRM ──
+const corridorDefs = {
+  mcarthur: {
+    name: 'McArthur Ave', pct: 87, nei: 52.9, color: '#f59e0b', status: 'Approaching cap',
+    school: true, multiplier: '1.8×', rerouted: 3,
+    // McArthur from Vanier Pkwy east to St Laurent
+    start: [-75.6600, 45.4330], end: [-75.6200, 45.4350]
+  },
+  montreal: {
+    name: 'Montreal Rd', pct: 54, nei: 55.1, color: '#1a73e8', status: 'Normal',
+    school: false, multiplier: '1.2×', rerouted: 0,
+    // Montreal Rd from Vanier northeast to Gloucester
+    start: [-75.6550, 45.4380], end: [-75.6050, 45.4445]
+  },
+  ogilvie: {
+    name: 'Ogilvie Rd', pct: 41, nei: 61.3, color: '#1a73e8', status: 'Normal',
+    school: false, multiplier: '1.0× (above NEI 60)', rerouted: 0,
+    // Ogilvie from St Laurent east to Blair
+    start: [-75.6280, 45.4080], end: [-75.5900, 45.4100]
+  },
+  stlaurent: {
+    name: 'St Laurent Blvd', pct: 28, nei: 58.7, color: '#34a853', status: 'Low density',
+    school: false, multiplier: '1.4×', rerouted: 0,
+    // St Laurent from Montreal Rd south past Queensway
+    start: [-75.6270, 45.4410], end: [-75.6260, 45.4050]
+  },
+  walkley: {
+    name: 'Walkley Rd', pct: 18, nei: 48.2, color: '#34a853', status: 'Low density',
+    school: false, multiplier: '1.6×', rerouted: 0,
+    // Walkley from Bank St east to Russell Rd
+    start: [-75.6600, 45.3830], end: [-75.6100, 45.3850]
+  }
+};
+
+// ── Fetch real route geometry from OSRM ──
+async function fetchRoute(start, end) {
+  const url = `https://router.project-osrm.org/route/v1/driving/${start.join(',')};${end.join(',')}?overview=full&geometries=geojson`;
+  const resp = await fetch(url);
+  const data = await resp.json();
+  if (data.routes && data.routes[0]) {
+    return data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+  }
+  return null;
+}
+
+// ── Build corridor layers from real routes ──
+const corridorLines = {};
+const corridorData = {};
+let densityLayer, neiLayer, schoolLayer, vehicleLayer;
+
+async function initCorridors() {
+  const densityItems = [];
+
+  // Fetch all corridor routes in parallel
+  const keys = Object.keys(corridorDefs);
+  const routes = await Promise.all(keys.map(k => fetchRoute(corridorDefs[k].start, corridorDefs[k].end)));
+
+  keys.forEach((key, i) => {
+    const c = corridorDefs[key];
+    const coords = routes[i];
+    if (!coords) return;
+
+    corridorData[key] = { ...c, coords };
+
+    // Background glow
+    const bgLine = L.polyline(coords, {
+      color: c.color, weight: 14, opacity: 0.12, lineCap: 'round'
+    });
+
+    // Main line
+    const mainLine = L.polyline(coords, {
+      color: c.color, weight: 5, opacity: 0.6, lineCap: 'round',
+      dashArray: c.pct > 70 ? null : '10,8'
+    });
+
+    bgLine.on('click', () => selectCorridor(key));
+    mainLine.on('click', () => selectCorridor(key));
+
+    // Label at midpoint
+    const mid = coords[Math.floor(coords.length / 2)];
+    const label = L.marker(mid, {
+      icon: L.divIcon({
+        className: '',
+        html: `<div style="background:#fff;border:1.5px solid ${c.color};border-radius:6px;padding:2px 8px;font-size:10px;font-weight:600;color:${c.color};font-family:system-ui;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,0.08);cursor:pointer;">${c.name} ${c.pct}%</div>`,
+        iconAnchor: [45, 8]
+      })
+    });
+    label.on('click', () => selectCorridor(key));
+
+    corridorLines[key] = L.layerGroup([bgLine, mainLine, label]);
+    densityItems.push(corridorLines[key]);
+  });
+
+  densityLayer = L.layerGroup(densityItems).addTo(map);
+
+  // Hide loading
+  document.getElementById('mapLoading').classList.add('hidden');
+}
+
+// ── NEI Zones ──
+const vanierZone = L.polygon([
+  [45.4385, -75.6620], [45.4400, -75.6490], [45.4390, -75.6370],
+  [45.4340, -75.6310], [45.4285, -75.6340], [45.4275, -75.6490], [45.4305, -75.6610]
+], { color: '#ea4335', weight: 1.5, fillColor: '#ea4335', fillOpacity: 0.06, dashArray: '6,4' });
+
+const heronGateZone = L.polygon([
+  [45.3900, -75.6400], [45.3920, -75.6280], [45.3880, -75.6200],
+  [45.3830, -75.6220], [45.3820, -75.6370], [45.3860, -75.6420]
+], { color: '#ea4335', weight: 1.5, fillColor: '#ea4335', fillOpacity: 0.05, dashArray: '6,4' });
+
+const overbrookZone = L.polygon([
+  [45.4365, -75.6300], [45.4375, -75.6170], [45.4345, -75.6090],
+  [45.4295, -75.6070], [45.4275, -75.6170], [45.4305, -75.6290]
+], { color: '#f97316', weight: 1.5, fillColor: '#f97316', fillOpacity: 0.05, dashArray: '6,4' });
+
+function neiLbl(text, color, latlng) {
+  return L.marker(latlng, {
+    icon: L.divIcon({ className: '',
+      html: `<div style="background:#fff;border:1.5px solid ${color};border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;color:${color};font-family:system-ui;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.08);">${text}</div>`,
+      iconAnchor: [50, 10]
+    })
+  });
+}
+
+neiLayer = L.layerGroup([
+  vanierZone, heronGateZone, overbrookZone,
+  neiLbl('Vanier · NEI 52.9', '#ea4335', [45.4340, -75.6470]),
+  neiLbl('Heron Gate · NEI 45.0', '#ea4335', [45.3860, -75.6310]),
+  neiLbl('Overbrook · NEI 52.4', '#f97316', [45.4320, -75.6180])
+]).addTo(map);
+
+// ── School Zones ──
+const schoolCircle1 = L.circle([45.4335, -75.6530], {
+  radius: 200, color: '#fbbc04', weight: 2, fillColor: '#fbbc04', fillOpacity: 0.06, dashArray: '8,5'
+});
+const schoolLabel1 = L.marker([45.4335, -75.6530], {
+  icon: L.divIcon({ className: '',
+    html: '<div style="text-align:center;font-family:system-ui;"><div style="font-size:18px;">🏫</div><div style="background:#fff;border:1.5px solid #fbbc04;border-radius:6px;padding:2px 8px;font-size:9px;font-weight:600;color:#f59e0b;box-shadow:0 1px 4px rgba(0,0,0,0.08);white-space:nowrap;">Horizon-Jeunesse · 7:30–8:45</div></div>',
+    iconAnchor: [65, 18]
+  })
+});
+const schoolCircle2 = L.circle([45.4050, -75.6150], {
+  radius: 180, color: '#fbbc04', weight: 1, fillColor: '#fbbc04', fillOpacity: 0.04, dashArray: '6,4'
+});
+const schoolLabel2 = L.marker([45.4050, -75.6150], {
+  icon: L.divIcon({ className: '',
+    html: '<div style="text-align:center;font-family:system-ui;"><div style="font-size:14px;">🏫</div><div style="font-size:8px;color:#f59e0b;">Active 7:30–8:45</div></div>',
+    iconAnchor: [30, 12]
+  })
+});
+schoolLayer = L.layerGroup([schoolCircle1, schoolLabel1, schoolCircle2, schoolLabel2]).addTo(map);
+
+// ── Vehicle dots (hidden by default) ──
+function vM(lat, lng) {
+  return L.circleMarker([lat, lng], {
+    radius: 5, color: '#fff', fillColor: '#9334e6', fillOpacity: 0.8, weight: 1.5
+  });
+}
+vehicleLayer = L.layerGroup([
+  vM(45.4335, -75.6520), vM(45.4338, -75.6470), vM(45.4340, -75.6430),
+  vM(45.4342, -75.6380), vM(45.4344, -75.6330), vM(45.4346, -75.6280),
+  vM(45.4390, -75.6440), vM(45.4410, -75.6300),
+  vM(45.4300, -75.6260), vM(45.4240, -75.6255),
+  vM(45.4080, -75.6200), vM(45.4070, -75.6100),
+  vM(45.3830, -75.6400), vM(45.4150, -75.6450)
+]);
+
+// Downtown marker
+L.circleMarker([45.4215, -75.6972], { radius: 5, color: '#34a853', fillColor: '#34a853', fillOpacity: 0.3, weight: 1 }).addTo(map);
+L.marker([45.4215, -75.6972], {
+  icon: L.divIcon({ className: '', html: '<div style="font-size:11px;color:#34a853;font-family:system-ui;font-weight:500;white-space:nowrap;">Downtown Core</div>', iconAnchor: [-8, 6] })
+}).addTo(map);
+
+// Init corridors on load
+initCorridors();
+
+// ── Layer toggle ──
+const layers = { density: true, nei: true, school: true, vehicles: false };
+
+function toggleLayer(name) {
+  layers[name] = !layers[name];
+  const btn = document.getElementById('btn' + name.charAt(0).toUpperCase() + name.slice(1));
+  btn.classList.toggle('active', layers[name]);
+  const layerMap = { density: densityLayer, nei: neiLayer, school: schoolLayer, vehicles: vehicleLayer };
+  const lyr = layerMap[name];
+  if (!lyr) return;
+  if (layers[name]) map.addLayer(lyr); else map.removeLayer(lyr);
+}
+
+// ── Corridor selection ──
+let activePopup = null;
+
+function selectCorridor(key) {
+  document.querySelectorAll('.corridor-item').forEach(el => el.classList.remove('selected'));
+  document.getElementById('corr-' + key).classList.add('selected');
+  if (activePopup) map.closePopup(activePopup);
+
+  const c = corridorData[key];
+  if (!c) return;
+  const mid = c.coords[Math.floor(c.coords.length / 2)];
+
+  const schoolBadge = c.school
+    ? '<div class="popup-stat"><span class="popup-stat-label">School zone</span><span class="popup-stat-value" style="color:#f59e0b;">Active (7:30–8:45)</span></div>'
+    : '<div class="popup-stat"><span class="popup-stat-label">School zone</span><span class="popup-stat-value">None</span></div>';
+
+  activePopup = L.popup({ maxWidth: 280, closeButton: true })
+    .setLatLng(mid)
+    .setContent(`<div class="corridor-popup">
+      <h3>${c.name}</h3>
+      <div class="popup-bar"><div class="popup-bar-fill" style="width:${c.pct}%;background:${c.color};"></div></div>
+      <div class="popup-stat"><span class="popup-stat-label">Density vs. cap</span><span class="popup-stat-value" style="color:${c.color};">${c.pct}%</span></div>
+      <div class="popup-stat"><span class="popup-stat-label">NEI score</span><span class="popup-stat-value">${c.nei} ${c.nei < 60 ? '(equity-priority)' : ''}</span></div>
+      <div class="popup-stat"><span class="popup-stat-label">NEI multiplier</span><span class="popup-stat-value">${c.multiplier}</span></div>
+      ${schoolBadge}
+      <div class="popup-stat"><span class="popup-stat-label">Vehicles rerouted (15 min)</span><span class="popup-stat-value">${c.rerouted}</span></div>
+      <div class="popup-stat"><span class="popup-stat-label">Status</span><span class="popup-stat-value">${c.status}</span></div>
+    </div>`)
+    .openOn(map);
+
+  const bounds = L.latLngBounds(c.coords);
+  map.fitBounds(bounds.pad(0.3), { maxZoom: 15, animate: true });
+}
+
+// ── Action confirmations ──
+let pendingAction = null;
+
+function showReduceDispatch() {
+  document.getElementById('confirmTitle').textContent = 'Reduce Dispatch — McArthur Corridor';
+  document.getElementById('confirmBody').innerHTML = 'This will reduce dispatch volume to the McArthur Ave corridor by 20% for the next 30 minutes. Approximately <strong>5 queued vehicles</strong> will be held or redirected to alternative corridors.<br><br>The automated feedback loop will continue operating. You can restore normal dispatch at any time.';
+  document.getElementById('confirmOk').textContent = 'Reduce dispatch';
+  document.getElementById('confirmOk').className = 'confirm-btn confirm-ok warn';
+  document.getElementById('confirmOverlay').classList.add('visible');
+  pendingAction = 'reduce';
+}
+
+function showFlagForCity() {
+  document.getElementById('confirmTitle').textContent = 'Flag Exceedances for City Review';
+  document.getElementById('confirmBody').innerHTML = 'This will send a compliance report to the City of Ottawa Transportation Division covering:<br><br>• <strong>2 constraint exceedances</strong> in the current period<br>• McArthur Ave corridor density at 87% of cap<br>• School-zone compliance status (0 violations)<br>• Fleet equity score: 76/100<br><br>The report includes corridor-level data and timestamps. Mariam (City Transportation) will be notified.';
+  document.getElementById('confirmOk').textContent = 'Send report';
+  document.getElementById('confirmOk').className = 'confirm-btn confirm-ok';
+  document.getElementById('confirmOverlay').classList.add('visible');
+  pendingAction = 'flag';
+}
+
+function closeConfirm() { document.getElementById('confirmOverlay').classList.remove('visible'); pendingAction = null; }
+
+function executeConfirm() {
+  closeConfirm();
+  if (pendingAction === 'reduce') {
+    showToast('⬇️', 'Dispatch reduced 20% on McArthur Ave for 30 min. 5 vehicles redirected.');
+    document.getElementById('alertList').insertAdjacentHTML('afterbegin', `<div class="alert-item info"><div class="alert-icon">⬇️</div><div><div class="alert-text"><strong>Dispatch reduced.</strong> McArthur corridor dispatch −20% for 30 min. 5 vehicles held.</div><div class="alert-time">Just now</div></div></div>`);
+    document.getElementById('scoreValue').textContent = '79';
+    document.getElementById('scoreMarker').style.left = '79%';
+  } else if (pendingAction === 'flag') {
+    showToast('📋', 'Exceedance report sent to City of Ottawa Transportation (Mariam D.).');
+    document.getElementById('exceedanceChange').textContent = 'Flagged for City review';
+    document.getElementById('exceedanceChange').className = 'metric-change good';
+    document.getElementById('alertList').insertAdjacentHTML('afterbegin', `<div class="alert-item ok"><div class="alert-icon">📋</div><div><div class="alert-text"><strong>Report sent.</strong> 2 exceedances flagged to City of Ottawa. Mariam D. notified.</div><div class="alert-time">Just now</div></div></div>`);
+  }
+}
+
+function showToast(icon, text) {
+  const t = document.getElementById('toast');
+  document.getElementById('toastIcon').textContent = icon;
+  document.getElementById('toastText').textContent = text;
+  t.classList.add('visible');
+  setTimeout(() => t.classList.remove('visible'), 4000);
+}
+
+document.getElementById('confirmOverlay').addEventListener('click', function(e) { if (e.target === this) closeConfirm(); });
+</script>
+</body>
+</html>
