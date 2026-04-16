@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robo-Cab Ottawa — Prototypes</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8f9fa; color: #333; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .container { max-width: 700px; padding: 40px 24px; text-align: center; }
+        h1 { font-size: 28px; margin-bottom: 8px; color: #1a73e8; }
+        .subtitle { font-size: 15px; color: #666; margin-bottom: 36px; }
+        .cards { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
+        .card { background: #fff; border-radius: 12px; padding: 28px 24px; width: 300px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-decoration: none; color: inherit; transition: transform 0.2s, box-shadow 0.2s; }
+        .card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,0.12); }
+        .card h2 { font-size: 18px; margin-bottom: 8px; color: #1a73e8; }
+        .card p { font-size: 14px; color: #555; line-height: 1.5; }
+        .icon { font-size: 36px; margin-bottom: 12px; }
+        footer { margin-top: 40px; font-size: 12px; color: #999; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Robo-Cab Ottawa</h1>
+        <p class="subtitle">DTI5310 — Ethics for Design, AI &amp; Robotics<br>Fleet-Level Residential Cut-Through Analysis</p>
+        <div class="cards">
+            <a class="card" href="prototype_rider_app_v2.html">
+                <div class="icon">📱</div>
+                <h2>Rider App</h2>
+                <p>Interactive rider experience showing route adjustment, equity overlay, and transparency features.</p>
+            </a>
+            <a class="card" href="prototype_fleet_dashboard_v2.html">
+                <div class="icon">🗺️</div>
+                <h2>Fleet Dashboard</h2>
+                <p>Operations dashboard with real corridor data, NEI equity scores, and fleet management controls.</p>
+            </a>
+        </div>
+        <footer>University of Ottawa — Winter 2026</footer>
+    </div>
+</body>
+</html>
